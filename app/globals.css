@@ -1,7 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
 @layer base {
   :root {
     --background: 0 0% 100%;
