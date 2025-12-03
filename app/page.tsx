@@ -1,5 +1,5 @@
 "use client"
- 
+
 import { useState, useEffect } from "react"
 import {
   Activity,
@@ -8,59 +8,60 @@ import {
   Wifi,
   WifiOff,
   User,
+  Calendar,
   BarChart3,
   Plus,
   Trash2,
   Download,
   Play,
   Square,
-  Flag,
 } from "lucide-react"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
- 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
 interface Athlete {
   id: string
   name: string
   category: string
 }
- 
+
 interface TrainingSession {
   id: string
   athleteId: string
   athleteName: string
   date: string
-  hurdleTimes: number[] // Tiempos parciales de cada valla
-  totalTime: number // Tiempo total de la carrera
-  numHurdles: number // Número de vallas en la carrera
+  hurdleTimes: number[]
+  totalTime: number
+  numHurdles: number
 }
- 
+
 declare global {
   interface BluetoothDevice extends EventTarget {
     id: string
     name?: string
     gatt?: BluetoothRemoteGATTServer
   }
- 
+
   interface BluetoothRemoteGATTServer {
     connected: boolean
     connect(): Promise<BluetoothRemoteGATTServer>
     disconnect(): void
     getPrimaryService(service: string): Promise<BluetoothRemoteGATTService>
   }
- 
+
   interface BluetoothRemoteGATTService {
     getCharacteristic(characteristic: string): Promise<BluetoothRemoteGATTCharacteristic>
   }
- 
+
   interface BluetoothRemoteGATTCharacteristic extends EventTarget {
     value?: DataView
     startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>
     addEventListener(type: string, listener: (event: any) => void): void
   }
- 
+
   interface Navigator {
     bluetooth?: {
       requestDevice(options: {
@@ -70,7 +71,7 @@ declare global {
     }
   }
 }
- 
+
 export default function AutomatedTimingSystemDashboard() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showInstallButton, setShowInstallButton] = useState(false)
@@ -79,52 +80,46 @@ export default function AutomatedTimingSystemDashboard() {
   const [lastSignal, setLastSignal] = useState<Date | null>(null)
   const [bluetoothDevice, setBluetoothDevice] = useState<BluetoothDevice | null>(null)
   const [bluetoothCharacteristic, setBluetoothCharacteristic] = useState<any>(null)
-  const [showBluetoothDialog, setShowBluetoothDialog] = useState(false)
   const [isBluetoothSupported, setIsBluetoothSupported] = useState(true)
- 
+
   const [athletes, setAthletes] = useState<Athlete[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("athletes")
-      return saved
-        ? JSON.parse(saved)
-        : [
-            { id: "1", name: "Juan Pérez", category: "Junior" },
-            { id: "2", name: "María García", category: "Senior" },
-            { id: "3", name: "Carlos López", category: "Junior" },
-          ]
-    }
-    return []
+    if (typeof window === "undefined") return []
+    const saved = localStorage.getItem("athletes")
+    return saved
+      ? JSON.parse(saved)
+      : [
+          { id: "1", name: "Juan Pérez", category: "Junior" },
+          { id: "2", name: "María García", category: "Senior" },
+          { id: "3", name: "Carlos López", category: "Junior" },
+        ]
   })
   const [newAthleteName, setNewAthleteName] = useState("")
   const [newAthleteCategory, setNewAthleteCategory] = useState("Junior")
- 
+
   const [sessions, setSessions] = useState<TrainingSession[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("sessions")
-      return saved ? JSON.parse(saved) : []
-    }
-    return []
+    if (typeof window === "undefined") return []
+    const saved = localStorage.getItem("sessions")
+    return saved ? JSON.parse(saved) : []
   })
- 
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>("")
-  const [numHurdles, setNumHurdles] = useState<number>(5) // Número de vallas configurable
-  const [isRaceActive, setIsRaceActive] = useState(false) // Estado de la carrera
-  const [hurdleTimes, setHurdleTimes] = useState<number[]>([]) // Tiempos de cada valla
-  const [raceStartTime, setRaceStartTime] = useState<number>(0) // Tiempo de inicio de la carrera
- 
+  const [isRaceActive, setIsRaceActive] = useState(false)
+  const [hurdleTimes, setHurdleTimes] = useState<number[]>([])
+  const [numHurdles, setNumHurdles] = useState<number>(10)
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("athletes", JSON.stringify(athletes))
     }
   }, [athletes])
- 
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("sessions", JSON.stringify(sessions))
     }
   }, [sessions])
- 
+
   useEffect(() => {
+    if (typeof window === "undefined") return
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e)
@@ -136,13 +131,13 @@ export default function AutomatedTimingSystemDashboard() {
     }
     return () => window.removeEventListener("beforeinstallprompt", handler)
   }, [])
- 
+
   useEffect(() => {
     if (typeof window !== "undefined" && !navigator.bluetooth) {
       setIsBluetoothSupported(false)
     }
   }, [])
- 
+
   useEffect(() => {
     const checkConnection = setInterval(() => {
       if (isConnected && bluetoothDevice && !bluetoothDevice.gatt?.connected) {
@@ -154,17 +149,15 @@ export default function AutomatedTimingSystemDashboard() {
     }, 1000)
     return () => clearInterval(checkConnection)
   }, [isConnected, bluetoothDevice])
- 
+
   const handleInstallClick = async () => {
     if (!deferredPrompt) return
     deferredPrompt.prompt()
     const { outcome } = await deferredPrompt.userChoice
-    if (outcome === "accepted") {
-      setShowInstallButton(false)
-    }
     setDeferredPrompt(null)
+    setShowInstallButton(false)
   }
- 
+
   const connectToESP32 = async () => {
     if (!navigator.bluetooth) {
       alert("Bluetooth no disponible. Usa Chrome en Android.")
@@ -172,7 +165,6 @@ export default function AutomatedTimingSystemDashboard() {
     }
     try {
       setConnectionStatus("Buscando dispositivos...")
-      setShowBluetoothDialog(true)
       const device = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: "ESP32" }, { namePrefix: "ESP" }],
         optionalServices: ["4fafc201-1fb5-459e-8fcc-c5c9c331914b"],
@@ -180,55 +172,92 @@ export default function AutomatedTimingSystemDashboard() {
       setConnectionStatus("Conectando...")
       const server = await device.gatt?.connect()
       if (!server) throw new Error("No se pudo conectar")
- 
+
       const service = await server.getPrimaryService("4fafc201-1fb5-459e-8fcc-c5c9c331914b")
       const characteristic = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8")
- 
+
       await characteristic.startNotifications()
-      characteristic.addEventListener("characteristicvaluechanged", handleBluetoothData)
- 
+      characteristic.addEventListener("characteristicvaluechanged", (event: any) => {
+        handleTimeReceived(event.target.value)
+      })
+
       setBluetoothDevice(device)
       setBluetoothCharacteristic(characteristic)
       setIsConnected(true)
       setConnectionStatus("Conectado")
-      setShowBluetoothDialog(false)
       setLastSignal(new Date())
-    } catch (error: any) {
-      setConnectionStatus("Error: " + error.message)
-      setShowBluetoothDialog(false)
-      alert("Error al conectar: " + error.message)
+    } catch (error) {
+      console.error("Error conectando:", error)
+      setConnectionStatus("Error al conectar")
+      alert("No se pudo conectar al ESP32. Asegúrate de que esté encendido y cerca.")
     }
   }
- 
-  const handleBluetoothData = (event: any) => {
-    const value = event.target.value
-    const timeMs = value.getUint32(0, true)
-    setLastSignal(new Date())
- 
-    if (isRaceActive) {
-      // Calcular tiempo desde el inicio de la carrera
-      const partialTime = timeMs
-      setHurdleTimes((prev) => {
-        const newTimes = [...prev, partialTime]
-        // Si llegamos al número de vallas, terminar automáticamente
-        if (newTimes.length >= numHurdles) {
-          setTimeout(() => stopRace(), 100)
-        }
-        return newTimes
-      })
-    }
-  }
- 
-  const disconnectESP32 = () => {
-    if (bluetoothDevice?.gatt?.connected) {
+
+  const disconnectFromESP32 = () => {
+    if (bluetoothDevice && bluetoothDevice.gatt?.connected) {
       bluetoothDevice.gatt.disconnect()
     }
-    setIsConnected(false)
-    setConnectionStatus("Desconectado")
     setBluetoothDevice(null)
     setBluetoothCharacteristic(null)
+    setIsConnected(false)
+    setConnectionStatus("Desconectado")
   }
- 
+
+  const handleTimeReceived = (value: DataView) => {
+    if (!isRaceActive) return
+
+    const time = value.getUint32(0, true)
+    setLastSignal(new Date())
+
+    setHurdleTimes((prev) => {
+      const newTimes = [...prev, time]
+      if (newTimes.length >= numHurdles) {
+        stopRace(newTimes)
+      }
+      return newTimes
+    })
+  }
+
+  const startRace = () => {
+    if (!selectedAthleteId) {
+      alert("Por favor selecciona un atleta")
+      return
+    }
+    if (!isConnected) {
+      alert("Por favor conecta el dispositivo ESP32")
+      return
+    }
+    setIsRaceActive(true)
+    setHurdleTimes([])
+  }
+
+  const stopRace = (times?: number[]) => {
+    const finalTimes = times || hurdleTimes
+    if (finalTimes.length > 0 && selectedAthleteId) {
+      saveSession(finalTimes)
+    }
+    setIsRaceActive(false)
+    setHurdleTimes([])
+  }
+
+  const saveSession = (times: number[]) => {
+    const athlete = athletes.find((a) => a.id === selectedAthleteId)
+    if (!athlete) return
+
+    const totalTime = times[times.length - 1]
+    const newSession: TrainingSession = {
+      id: Date.now().toString(),
+      athleteId: athlete.id,
+      athleteName: athlete.name,
+      date: new Date().toISOString(),
+      hurdleTimes: times,
+      totalTime: totalTime,
+      numHurdles: times.length,
+    }
+
+    setSessions((prev) => [newSession, ...prev])
+  }
+
   const addAthlete = () => {
     if (!newAthleteName.trim()) return
     const newAthlete: Athlete = {
@@ -236,350 +265,318 @@ export default function AutomatedTimingSystemDashboard() {
       name: newAthleteName,
       category: newAthleteCategory,
     }
-    setAthletes([...athletes, newAthlete])
+    setAthletes((prev) => [...prev, newAthlete])
     setNewAthleteName("")
+    setNewAthleteCategory("Junior")
   }
- 
+
   const deleteAthlete = (id: string) => {
-    setAthletes(athletes.filter((a) => a.id !== id))
+    setAthletes((prev) => prev.filter((a) => a.id !== id))
   }
- 
-  const startRace = () => {
-    if (!selectedAthleteId) {
-      alert("Selecciona un atleta primero")
-      return
-    }
-    if (!isConnected) {
-      alert("Conecta el ESP32 primero")
-      return
-    }
-    setIsRaceActive(true)
-    setHurdleTimes([])
-    setRaceStartTime(Date.now())
-  }
- 
-  const stopRace = () => {
-    if (hurdleTimes.length === 0) {
-      alert("No hay tiempos registrados")
-      setIsRaceActive(false)
-      return
-    }
- 
-    const athlete = athletes.find((a) => a.id === selectedAthleteId)
-    if (!athlete) return
- 
-    const totalTime = hurdleTimes[hurdleTimes.length - 1] // El último tiempo es el tiempo total
- 
-    const newSession: TrainingSession = {
-      id: Date.now().toString(),
-      athleteId: selectedAthleteId,
-      athleteName: athlete.name,
-      date: new Date().toISOString(),
-      hurdleTimes: hurdleTimes,
-      totalTime: totalTime,
-      numHurdles: numHurdles,
-    }
- 
-    setSessions([...sessions, newSession])
-    setIsRaceActive(false)
-    setHurdleTimes([])
-  }
- 
+
   const exportData = () => {
-    const data = {
-      athletes,
-      sessions,
-      exportDate: new Date().toISOString(),
-    }
+    const data = { athletes, sessions }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `timing-data-${new Date().toISOString().split("T")[0]}.json`
+    a.download = `cronometraje-${new Date().toISOString().split("T")[0]}.json`
     a.click()
   }
- 
-  const getSplitTime = (hurdleTimes: number[], index: number) => {
-    if (index === 0) return hurdleTimes[0]
-    return hurdleTimes[index] - hurdleTimes[index - 1]
+
+  const formatTime = (ms: number) => {
+    return (ms / 1000).toFixed(3) + "s"
   }
- 
+
+  const getAthleteStats = (athleteId: string) => {
+    const athleteSessions = sessions.filter((s) => s.athleteId === athleteId)
+    return {
+      total: athleteSessions.length,
+      best: athleteSessions.length > 0 ? Math.min(...athleteSessions.map((s) => s.totalTime)) : 0,
+      average:
+        athleteSessions.length > 0
+          ? athleteSessions.reduce((sum, s) => sum + s.totalTime, 0) / athleteSessions.length
+          : 0,
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Activity className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-900">Sistema de Cronometraje<h11>
-          <divv>
+            <h1 className="text-3xl font-bold text-gray-900">Sistema de Cronometraje</h1>
+          </div>
           {showInstallButton && (
-            <Button onClick={handleInstallClick} variant="outline">
-              <Download className="w-4 h-4 mr-2" />
+            <Button onClick={handleInstallClick} variant="outline" className="gap-2 bg-transparent">
+              <Download className="w-4 h-4" />
               Instalar App
-            <Buttonn>
+            </Button>
           )}
-        <divv>
- 
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {isConnected ? <Wifi className="text-green-500" /> : <WifiOff className="text-red-500" />}
+                {isConnected ? <Wifi className="text-green-600" /> : <WifiOff className="text-red-600" />}
                 Conexión ESP32
-              <CardTitlee>
-              <CardDescription>{connectionStatus}<CardDescriptionn>
-            <CardHeaderr>
+              </CardTitle>
+              <CardDescription>{connectionStatus}</CardDescription>
+            </CardHeader>
             <CardContent>
-              <Button
-                onClick={isConnected ? disconnectESP32 : connectToESP32}
-                variant={isConnected ? "destructive" : "default"}
-                className="w-full"
-                disabled={!isBluetoothSupported}
-              >
-                {isConnected ? "Desconectar" : "Conectar"}
-              <Buttonn>
-              {lastSignal && (
-                <p className="text-sm text-gray-500 mt-2">Última señal: {lastSignal.toLocaleTimeString()}<pp>
+              {!isBluetoothSupported ? (
+                <p className="text-sm text-red-600">Bluetooth no disponible. Usa Chrome en Android.</p>
+              ) : (
+                <Button
+                  onClick={isConnected ? disconnectFromESP32 : connectToESP32}
+                  variant={isConnected ? "destructive" : "default"}
+                  className="w-full"
+                >
+                  {isConnected ? "Desconectar" : "Conectar"}
+                </Button>
               )}
-            <CardContentt>
-          <Cardd>
- 
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Timer className="text-blue-600" />
                 Estado de Carrera
-              <CardTitlee>
-            <CardHeaderr>
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <div className="text-center space-y-2">
                 {isRaceActive ? (
                   <>
-                    <div className="text-2xl font-bold text-green-600 animate-pulse">CARRERA EN CURSO<divv>
+                    <div className="text-2xl font-bold text-green-600 animate-pulse">CARRERA EN CURSO</div>
                     <div className="text-lg text-gray-600">
                       Vallas: {hurdleTimes.length} / {numHurdles}
-                    <divv>
+                    </div>
                     {hurdleTimes.length > 0 && (
                       <div className="text-sm text-blue-600">
-                        Último: {(hurdleTimes[hurdleTimes.length - 1] / 1000).toFixed(3)}s
-                      <divv>
+                        Último: {formatTime(hurdleTimes[hurdleTimes.length - 1])}
+                      </div>
                     )}
                   </>
                 ) : (
                   <>
-                    <div className="text-2xl font-bold text-gray-400">EN ESPERA<divv>
-                    <div className="text-sm text-gray-500">Listo para iniciar carrera<divv>
+                    <div className="text-2xl font-bold text-gray-400">EN ESPERA</div>
+                    <div className="text-sm text-gray-500">Listo para iniciar carrera</div>
                   </>
                 )}
-              <divv>
-            <CardContentt>
-          <Cardd>
- 
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="text-purple-600" />
                 Estadísticas
-              <CardTitlee>
-            <CardHeaderr>
+              </CardTitle>
+            </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Atletas:<spann>
-                  <span className="font-bold">{athletes.length}<spann>
-                <divv>
+                  <span className="text-gray-600">Atletas:</span>
+                  <span className="font-semibold">{athletes.length}</span>
+                </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Carreras:<spann>
-                  <span className="font-bold">{sessions.length}<spann>
-                <divv>
+                  <span className="text-gray-600">Sesiones:</span>
+                  <span className="font-semibold">{sessions.length}</span>
+                </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Vallas hoy:<spann>
-                  <span className="font-bold">{hurdleTimes.length}<spann>
-                <divv>
-              <divv>
-            <CardContentt>
-          <Cardd>
-        <divv>
- 
+                  <span className="text-gray-600">Tiempos hoy:</span>
+                  <span className="font-semibold">
+                    {sessions.filter((s) => new Date(s.date).toDateString() === new Date().toDateString()).length}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="text-green-600" />
                 Gestión de Atletas
-              <CardTitlee>
-            <CardHeaderr>
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label htmlFor="athlete-name">Nombre<Labell>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Nombre</Label>
                   <Input
-                    id="athlete-name"
+                    placeholder="Nombre del atleta"
                     value={newAthleteName}
                     onChange={(e) => setNewAthleteName(e.target.value)}
-                    placeholder="Nombre del atleta"
                   />
-                <divv>
-                <div className="w-32">
-                  <Label htmlFor="athlete-category">Categoría<Labell>
-                  <select
-                    id="athlete-category"
-                    value={newAthleteCategory}
-                    onChange={(e) => setNewAthleteCategory(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option>Junior<optionn>
-                    <option>Senior<optionn>
-                    <option>Master<optionn>
-                  <selectt>
-                <divv>
-                <div className="pt-6">
-                  <Button onClick={addAthlete} size="icon">
-                    <Plus className="w-4 h-4" />
-                  <Buttonn>
-                <divv>
-              <divv>
- 
+                </div>
+                <div>
+                  <Label>Categoría</Label>
+                  <Select value={newAthleteCategory} onValueChange={setNewAthleteCategory}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Junior">Junior</SelectItem>
+                      <SelectItem value="Senior">Senior</SelectItem>
+                      <SelectItem value="Master">Master</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button onClick={addAthlete} className="w-full gap-2">
+                <Plus className="w-4 h-4" />
+                Agregar Atleta
+              </Button>
+
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {athletes.map((athlete) => (
                   <div key={athlete.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <p className="font-medium">{athlete.name}<pp>
-                      <p className="text-sm text-gray-500">{athlete.category}<pp>
-                    <divv>
-                    <Button variant="ghost" size="icon" onClick={() => deleteAthlete(athlete.id)}>
-                      <Trash2 className="w-4 h-4 text-red-500" />
-                    <Buttonn>
-                  <divv>
+                      <div className="font-medium">{athlete.name}</div>
+                      <div className="text-sm text-gray-500">{athlete.category}</div>
+                    </div>
+                    <Button onClick={() => deleteAthlete(athlete.id)} variant="ghost" size="sm">
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                    </Button>
+                  </div>
                 ))}
-              <divv>
-            <CardContentt>
-          <Cardd>
- 
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Flag className="text-orange-600" />
-                Control de Carrera
-              <CardTitlee>
-            <CardHeaderr>
+                <Calendar className="text-orange-600" />
+                Sesión de Entrenamiento
+              </CardTitle>
+            </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="select-athlete">Seleccionar Atleta<Labell>
-                <select
-                  id="select-athlete"
-                  value={selectedAthleteId}
-                  onChange={(e) => setSelectedAthleteId(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                <Label>Seleccionar Atleta</Label>
+                <Select value={selectedAthleteId} onValueChange={setSelectedAthleteId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="-- Seleccionar --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {athletes.map((athlete) => (
+                      <SelectItem key={athlete.id} value={athlete.id}>
+                        {athlete.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Número de Vallas</Label>
+                <Select
+                  value={numHurdles.toString()}
+                  onValueChange={(v) => setNumHurdles(Number.parseInt(v))}
                   disabled={isRaceActive}
                 >
-                  <option value="">-- Seleccionar --<optionn>
-                  {athletes.map((athlete) => (
-                    <option key={athlete.id} value={athlete.id}>
-                      {athlete.name} ({athlete.category})
-                    <optionn>
-                  ))}
-                <selectt>
-              <divv>
- 
-              <div>
-                <Label htmlFor="num-hurdles">Número de Vallas<Labell>
-                <Input
-                  id="num-hurdles"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={numHurdles}
-                  onChange={(e) => setNumHurdles(Number.parseInt(e.target.value) || 5)}
-                  disabled={isRaceActive}
-                />
-              <divv>
- 
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num} vallas
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex gap-2">
                 <Button
                   onClick={startRace}
-                  disabled={!selectedAthleteId || isRaceActive || !isConnected}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  disabled={isRaceActive || !selectedAthleteId || !isConnected}
+                  className="flex-1 gap-2"
+                  variant="default"
                 >
-                  <Play className="w-4 h-4 mr-2" />
+                  <Play className="w-4 h-4" />
                   Iniciar Carrera
-                <Buttonn>
-                <Button onClick={stopRace} disabled={!isRaceActive} variant="destructive" className="flex-1">
-                  <Square className="w-4 h-4 mr-2" />
+                </Button>
+                <Button
+                  onClick={() => stopRace()}
+                  disabled={!isRaceActive}
+                  variant="destructive"
+                  className="flex-1 gap-2"
+                >
+                  <Square className="w-4 h-4" />
                   Detener
-                <Buttonn>
-              <divv>
- 
+                </Button>
+              </div>
+
               {hurdleTimes.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium mb-2">Tiempos Parciales:<pp>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {hurdleTimes.map((time, idx) => (
-                      <div key={idx} className="flex justify-between text-sm p-2 bg-gray-50 rounded">
-                        <span className="font-medium">Valla {idx + 1}:<spann>
-                        <span className="text-blue-600">{(time / 1000).toFixed(3)}s<spann>
-                      <divv>
+                <div className="space-y-2">
+                  <Label>Tiempos Parciales:</Label>
+                  <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto p-2 bg-gray-50 rounded">
+                    {hurdleTimes.map((time, index) => (
+                      <div key={index} className="text-center p-2 bg-white rounded border">
+                        <div className="text-xs text-gray-500">V{index + 1}</div>
+                        <div className="font-mono text-sm font-semibold">{formatTime(time)}</div>
+                      </div>
                     ))}
-                  <divv>
-                <divv>
+                  </div>
+                </div>
               )}
-            <CardContentt>
-          <Cardd>
-        <divv>
- 
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <TrendingUp className="text-indigo-600" />
-                Historial de Carreras
-              <spann>
-              <Button onClick={exportData} variant="outline" size="sm">
-                <Download className="w-4 h-4 mr-2" />
-                Exportar Datos
-              <Buttonn>
-            <CardTitlee>
-          <CardHeaderr>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="text-blue-600" />
+              Historial de Sesiones
+            </CardTitle>
+            <Button onClick={exportData} variant="outline" className="gap-2 bg-transparent">
+              <Download className="w-4 h-4" />
+              Exportar Datos
+            </Button>
+          </CardHeader>
           <CardContent>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
+            <div className="space-y-4 max-h-96 overflow-y-auto">
               {sessions.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No hay carreras registradas<pp>
+                <p className="text-center text-gray-500 py-8">No hay sesiones registradas</p>
               ) : (
-                sessions
-                  .slice()
-                  .reverse()
-                  .map((session) => (
-                    <div key={session.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-bold text-lg">{session.athleteName}<pp>
-                          <p className="text-sm text-gray-500">{new Date(session.date).toLocaleString()}<pp>
-                        <divv>
-                        <div className="text-right">
-                          <p className="text-2xl font-bold text-blue-600">{(session.totalTime / 1000).toFixed(3)}s<pp>
-                          <p className="text-xs text-gray-500">{session.numHurdles} vallas<pp>
-                        <divv>
-                      <divv>
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold text-gray-600 mb-1">Parciales por valla:<pp>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-                          {session.hurdleTimes.map((time, idx) => (
-                            <div key={idx} className="text-xs bg-white p-2 rounded border border-blue-200">
-                              <span className="font-medium text-gray-700">V{idx + 1}:<spann>{" "}
-                              <span className="text-blue-600 font-bold">{(time / 1000).toFixed(3)}s<spann>
-                            <divv>
-                          ))}
-                        <divv>
-                      <divv>
-                    <divv>
-                  ))
+                sessions.map((session) => (
+                  <div key={session.id} className="p-4 bg-gray-50 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-lg">{session.athleteName}</div>
+                        <div className="text-sm text-gray-500">{new Date(session.date).toLocaleString("es-ES")}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-blue-600">{formatTime(session.totalTime)}</div>
+                        <div className="text-xs text-gray-500">{session.numHurdles} vallas</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-5 md:grid-cols-10 gap-2 pt-2 border-t">
+                      {session.hurdleTimes.map((time, index) => (
+                        <div key={index} className="text-center p-1 bg-white rounded text-xs">
+                          <div className="text-gray-500">V{index + 1}</div>
+                          <div className="font-mono font-semibold">{formatTime(time)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
               )}
-            <divv>
-          <CardContentt>
-        <Cardd>
-      <divv>
-    <divv>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   )
 }
- 
-   
