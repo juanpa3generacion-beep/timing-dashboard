@@ -15,11 +15,12 @@ import {
   Download,
   Play,
   Square,
+  Settings,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Athlete {
@@ -72,7 +73,7 @@ declare global {
   }
 }
 
-export default function AutomatedTimingSystemDashboard() {
+const AutomatedTimingSystemDashboard = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showInstallButton, setShowInstallButton] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
@@ -83,24 +84,29 @@ export default function AutomatedTimingSystemDashboard() {
   const [isBluetoothSupported, setIsBluetoothSupported] = useState(true)
 
   const [athletes, setAthletes] = useState<Athlete[]>(() => {
-    if (typeof window === "undefined") return []
-    const saved = localStorage.getItem("athletes")
-    return saved
-      ? JSON.parse(saved)
-      : [
-          { id: "1", name: "Juan Pérez", category: "Junior" },
-          { id: "2", name: "María García", category: "Senior" },
-          { id: "3", name: "Carlos López", category: "Junior" },
-        ]
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("athletes")
+      return saved
+        ? JSON.parse(saved)
+        : [
+            { id: "1", name: "Juan Pérez", category: "Junior" },
+            { id: "2", name: "María García", category: "Senior" },
+            { id: "3", name: "Carlos López", category: "Junior" },
+          ]
+    }
+    return []
   })
   const [newAthleteName, setNewAthleteName] = useState("")
   const [newAthleteCategory, setNewAthleteCategory] = useState("Junior")
 
   const [sessions, setSessions] = useState<TrainingSession[]>(() => {
-    if (typeof window === "undefined") return []
-    const saved = localStorage.getItem("sessions")
-    return saved ? JSON.parse(saved) : []
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sessions")
+      return saved ? JSON.parse(saved) : []
+    }
+    return []
   })
+
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>("")
   const [isRaceActive, setIsRaceActive] = useState(false)
   const [hurdleTimes, setHurdleTimes] = useState<number[]>([])
@@ -119,7 +125,6 @@ export default function AutomatedTimingSystemDashboard() {
   }, [sessions])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
     const handler = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e)
@@ -133,7 +138,7 @@ export default function AutomatedTimingSystemDashboard() {
   }, [])
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !navigator.bluetooth) {
+    if (!navigator.bluetooth) {
       setIsBluetoothSupported(false)
     }
   }, [])
@@ -151,11 +156,14 @@ export default function AutomatedTimingSystemDashboard() {
   }, [isConnected, bluetoothDevice])
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return
-    deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-    setDeferredPrompt(null)
-    setShowInstallButton(false)
+    if (deferredPrompt) {
+      deferredPrompt.prompt()
+      const { outcome } = await deferredPrompt.userChoice
+      if (outcome === "accepted") {
+        setShowInstallButton(false)
+      }
+      setDeferredPrompt(null)
+    }
   }
 
   const connectToESP32 = async () => {
@@ -177,9 +185,7 @@ export default function AutomatedTimingSystemDashboard() {
       const characteristic = await service.getCharacteristic("beb5483e-36e1-4688-b7f5-ea07361b26a8")
 
       await characteristic.startNotifications()
-      characteristic.addEventListener("characteristicvaluechanged", (event: any) => {
-        handleTimeReceived(event.target.value)
-      })
+      characteristic.addEventListener("characteristicvaluechanged", handleTimeReceived)
 
       setBluetoothDevice(device)
       setBluetoothCharacteristic(characteristic)
@@ -187,9 +193,9 @@ export default function AutomatedTimingSystemDashboard() {
       setConnectionStatus("Conectado")
       setLastSignal(new Date())
     } catch (error) {
-      console.error("Error conectando:", error)
+      console.error("Error al conectar:", error)
       setConnectionStatus("Error al conectar")
-      alert("No se pudo conectar al ESP32. Asegúrate de que esté encendido y cerca.")
+      setIsConnected(false)
     }
   }
 
@@ -203,19 +209,19 @@ export default function AutomatedTimingSystemDashboard() {
     setConnectionStatus("Desconectado")
   }
 
-  const handleTimeReceived = (value: DataView) => {
-    if (!isRaceActive) return
+  const handleTimeReceived = (event: any) => {
+    const value = event.target.value
+    const timeMs = value.getUint32(0, true)
 
-    const time = value.getUint32(0, true)
     setLastSignal(new Date())
 
-    setHurdleTimes((prev) => {
-      const newTimes = [...prev, time]
-      if (newTimes.length >= numHurdles) {
-        stopRace(newTimes)
+    if (isRaceActive && hurdleTimes.length < numHurdles) {
+      setHurdleTimes((prev) => [...prev, timeMs])
+
+      if (hurdleTimes.length + 1 === numHurdles) {
+        stopRace()
       }
-      return newTimes
-    })
+    }
   }
 
   const startRace = () => {
@@ -231,31 +237,31 @@ export default function AutomatedTimingSystemDashboard() {
     setHurdleTimes([])
   }
 
-  const stopRace = (times?: number[]) => {
-    const finalTimes = times || hurdleTimes
-    if (finalTimes.length > 0 && selectedAthleteId) {
-      saveSession(finalTimes)
-    }
+  const stopRace = () => {
     setIsRaceActive(false)
-    setHurdleTimes([])
+    if (hurdleTimes.length > 0) {
+      saveSession()
+    }
   }
 
-  const saveSession = (times: number[]) => {
+  const saveSession = () => {
     const athlete = athletes.find((a) => a.id === selectedAthleteId)
-    if (!athlete) return
+    if (!athlete || hurdleTimes.length === 0) return
 
-    const totalTime = times[times.length - 1]
+    const totalTime = hurdleTimes[hurdleTimes.length - 1]
     const newSession: TrainingSession = {
       id: Date.now().toString(),
       athleteId: athlete.id,
       athleteName: athlete.name,
       date: new Date().toISOString(),
-      hurdleTimes: times,
-      totalTime: totalTime,
-      numHurdles: times.length,
+      hurdleTimes: [...hurdleTimes],
+      totalTime,
+      numHurdles,
     }
 
     setSessions((prev) => [newSession, ...prev])
+    setHurdleTimes([])
+    setIsRaceActive(false)
   }
 
   const addAthlete = () => {
@@ -267,7 +273,6 @@ export default function AutomatedTimingSystemDashboard() {
     }
     setAthletes((prev) => [...prev, newAthlete])
     setNewAthleteName("")
-    setNewAthleteCategory("Junior")
   }
 
   const deleteAthlete = (id: string) => {
@@ -280,7 +285,7 @@ export default function AutomatedTimingSystemDashboard() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `cronometraje-${new Date().toISOString().split("T")[0]}.json`
+    a.download = `timing-data-${new Date().toISOString()}.json`
     a.click()
   }
 
@@ -290,51 +295,57 @@ export default function AutomatedTimingSystemDashboard() {
 
   const getAthleteStats = (athleteId: string) => {
     const athleteSessions = sessions.filter((s) => s.athleteId === athleteId)
-    return {
-      total: athleteSessions.length,
-      best: athleteSessions.length > 0 ? Math.min(...athleteSessions.map((s) => s.totalTime)) : 0,
-      average:
-        athleteSessions.length > 0
-          ? athleteSessions.reduce((sum, s) => sum + s.totalTime, 0) / athleteSessions.length
-          : 0,
-    }
+    if (athleteSessions.length === 0) return null
+
+    const times = athleteSessions.map((s) => s.totalTime)
+    const avg = times.reduce((a, b) => a + b, 0) / times.length
+    const best = Math.min(...times)
+
+    return { sessions: athleteSessions.length, avgTime: avg, bestTime: best }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Activity className="w-8 h-8 text-blue-600" />
-            <h1 className="text-3xl font-bold text-gray-900">Sistema de Cronometraje</h1>
+            <Activity className="w-10 h-10 text-blue-600" />
+            <h1 className="text-3xl font-bold text-gray-800">Sistema de Cronometraje</h1>
           </div>
           {showInstallButton && (
-            <Button onClick={handleInstallClick} variant="outline" className="gap-2 bg-transparent">
-              <Download className="w-4 h-4" />
+            <Button onClick={handleInstallClick} variant="outline">
+              <Download className="w-4 h-4 mr-2" />
               Instalar App
             </Button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {isConnected ? <Wifi className="text-green-600" /> : <WifiOff className="text-red-600" />}
+                {isConnected ? (
+                  <Wifi className="w-5 h-5 text-green-600" />
+                ) : (
+                  <WifiOff className="w-5 h-5 text-red-600" />
+                )}
                 Conexión ESP32
               </CardTitle>
               <CardDescription>{connectionStatus}</CardDescription>
             </CardHeader>
             <CardContent>
-              {!isBluetoothSupported ? (
-                <p className="text-sm text-red-600">Bluetooth no disponible. Usa Chrome en Android.</p>
+              {isConnected ? (
+                <div className="space-y-3">
+                  <Button onClick={disconnectFromESP32} variant="destructive" className="w-full">
+                    Desconectar
+                  </Button>
+                  {lastSignal && (
+                    <p className="text-sm text-gray-500">Última señal: {lastSignal.toLocaleTimeString()}</p>
+                  )}
+                </div>
               ) : (
-                <Button
-                  onClick={isConnected ? disconnectFromESP32 : connectToESP32}
-                  variant={isConnected ? "destructive" : "default"}
-                  className="w-full"
-                >
-                  {isConnected ? "Desconectar" : "Conectar"}
+                <Button onClick={connectToESP32} className="w-full" disabled={!isBluetoothSupported}>
+                  {isBluetoothSupported ? "Conectar" : "Bluetooth no disponible"}
                 </Button>
               )}
             </CardContent>
@@ -343,28 +354,30 @@ export default function AutomatedTimingSystemDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Timer className="text-blue-600" />
-                Estado de Carrera
+                <Timer className="w-5 h-5 text-blue-600" />
+                Tiempo Actual
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center space-y-2">
                 {isRaceActive ? (
                   <>
-                    <div className="text-2xl font-bold text-green-600 animate-pulse">CARRERA EN CURSO</div>
-                    <div className="text-lg text-gray-600">
+                    <div className="text-4xl font-bold text-blue-600">
+                      {hurdleTimes.length > 0 ? formatTime(hurdleTimes[hurdleTimes.length - 1]) : "0.000s"}
+                    </div>
+                    <div className="text-sm text-gray-600">
                       Vallas: {hurdleTimes.length} / {numHurdles}
                     </div>
                     {hurdleTimes.length > 0 && (
                       <div className="text-sm text-blue-600">
-                        Último: {formatTime(hurdleTimes[hurdleTimes.length - 1])}
+                        Último: {(hurdleTimes[hurdleTimes.length - 1] / 1000).toFixed(3)}s
                       </div>
                     )}
                   </>
                 ) : (
                   <>
                     <div className="text-2xl font-bold text-gray-400">EN ESPERA</div>
-                    <div className="text-sm text-gray-500">Listo para iniciar carrera</div>
+                    <div className="text-sm text-gray-500">Presiona Iniciar Carrera</div>
                   </>
                 )}
               </div>
@@ -374,7 +387,7 @@ export default function AutomatedTimingSystemDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="text-purple-600" />
+                <BarChart3 className="w-5 h-5 text-blue-600" />
                 Estadísticas
               </CardTitle>
             </CardHeader>
@@ -403,7 +416,7 @@ export default function AutomatedTimingSystemDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User className="text-green-600" />
+                <User className="w-5 h-5 text-blue-600" />
                 Gestión de Atletas
               </CardTitle>
             </CardHeader>
@@ -431,8 +444,8 @@ export default function AutomatedTimingSystemDashboard() {
                   </Select>
                 </div>
               </div>
-              <Button onClick={addAthlete} className="w-full gap-2">
-                <Plus className="w-4 h-4" />
+              <Button onClick={addAthlete} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
                 Agregar Atleta
               </Button>
 
@@ -440,7 +453,7 @@ export default function AutomatedTimingSystemDashboard() {
                 {athletes.map((athlete) => (
                   <div key={athlete.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <div className="font-medium">{athlete.name}</div>
+                      <div className="font-semibold">{athlete.name}</div>
                       <div className="text-sm text-gray-500">{athlete.category}</div>
                     </div>
                     <Button onClick={() => deleteAthlete(athlete.id)} variant="ghost" size="sm">
@@ -455,7 +468,7 @@ export default function AutomatedTimingSystemDashboard() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Calendar className="text-orange-600" />
+                <Calendar className="w-5 h-5 text-blue-600" />
                 Sesión de Entrenamiento
               </CardTitle>
             </CardHeader>
@@ -477,19 +490,18 @@ export default function AutomatedTimingSystemDashboard() {
               </div>
 
               <div>
-                <Label>Número de Vallas</Label>
-                <Select
-                  value={numHurdles.toString()}
-                  onValueChange={(v) => setNumHurdles(Number.parseInt(v))}
-                  disabled={isRaceActive}
-                >
+                <Label className="flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  Número de Vallas
+                </Label>
+                <Select value={numHurdles.toString()} onValueChange={(val) => setNumHurdles(Number.parseInt(val))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
-                      <SelectItem key={num} value={num.toString()}>
-                        {num} vallas
+                    {[...Array(20)].map((_, i) => (
+                      <SelectItem key={i + 1} value={(i + 1).toString()}>
+                        {i + 1} vallas
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -497,34 +509,27 @@ export default function AutomatedTimingSystemDashboard() {
               </div>
 
               <div className="flex gap-2">
-                <Button
-                  onClick={startRace}
-                  disabled={isRaceActive || !selectedAthleteId || !isConnected}
-                  className="flex-1 gap-2"
-                  variant="default"
-                >
-                  <Play className="w-4 h-4" />
-                  Iniciar Carrera
-                </Button>
-                <Button
-                  onClick={() => stopRace()}
-                  disabled={!isRaceActive}
-                  variant="destructive"
-                  className="flex-1 gap-2"
-                >
-                  <Square className="w-4 h-4" />
-                  Detener
-                </Button>
+                {!isRaceActive ? (
+                  <Button onClick={startRace} className="flex-1 bg-green-600 hover:bg-green-700">
+                    <Play className="w-4 h-4 mr-2" />
+                    Iniciar Carrera
+                  </Button>
+                ) : (
+                  <Button onClick={stopRace} className="flex-1 bg-red-600 hover:bg-red-700">
+                    <Square className="w-4 h-4 mr-2" />
+                    Detener Carrera
+                  </Button>
+                )}
               </div>
 
               {hurdleTimes.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Tiempos Parciales:</Label>
-                  <div className="grid grid-cols-5 gap-2 max-h-40 overflow-y-auto p-2 bg-gray-50 rounded">
+                <div>
+                  <Label>Tiempos parciales:</Label>
+                  <div className="grid grid-cols-5 gap-2 mt-2">
                     {hurdleTimes.map((time, index) => (
-                      <div key={index} className="text-center p-2 bg-white rounded border">
-                        <div className="text-xs text-gray-500">V{index + 1}</div>
-                        <div className="font-mono text-sm font-semibold">{formatTime(time)}</div>
+                      <div key={index} className="bg-blue-50 p-2 rounded text-center">
+                        <div className="text-xs text-gray-600">V{index + 1}</div>
+                        <div className="text-sm font-semibold">{formatTime(time)}</div>
                       </div>
                     ))}
                   </div>
@@ -535,44 +540,46 @@ export default function AutomatedTimingSystemDashboard() {
         </div>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="text-blue-600" />
-              Historial de Sesiones
-            </CardTitle>
-            <Button onClick={exportData} variant="outline" className="gap-2 bg-transparent">
-              <Download className="w-4 h-4" />
-              Exportar Datos
-            </Button>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
+                Historial de Sesiones
+              </CardTitle>
+              <Button onClick={exportData} variant="outline" size="sm">
+                <Download className="w-4 h-4 mr-2" />
+                Exportar Datos
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              {sessions.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No hay sesiones registradas</p>
-              ) : (
-                sessions.map((session) => (
-                  <div key={session.id} className="p-4 bg-gray-50 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold text-lg">{session.athleteName}</div>
-                        <div className="text-sm text-gray-500">{new Date(session.date).toLocaleString("es-ES")}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-blue-600">{formatTime(session.totalTime)}</div>
-                        <div className="text-xs text-gray-500">{session.numHurdles} vallas</div>
-                      </div>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {sessions.map((session) => (
+                <div key={session.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-semibold text-lg">{session.athleteName}</div>
+                      <div className="text-sm text-gray-500">{new Date(session.date).toLocaleString("es-ES")}</div>
                     </div>
-                    <div className="grid grid-cols-5 md:grid-cols-10 gap-2 pt-2 border-t">
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-blue-600">{formatTime(session.totalTime)}</div>
+                      <div className="text-xs text-gray-500">{session.numHurdles} vallas</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Parciales por valla:</div>
+                    <div className="grid grid-cols-5 gap-2">
                       {session.hurdleTimes.map((time, index) => (
-                        <div key={index} className="text-center p-1 bg-white rounded text-xs">
-                          <div className="text-gray-500">V{index + 1}</div>
-                          <div className="font-mono font-semibold">{formatTime(time)}</div>
+                        <div key={index} className="bg-gray-50 p-2 rounded text-center">
+                          <div className="text-xs text-gray-600">V{index + 1}</div>
+                          <div className="text-sm font-semibold">{formatTime(time)}</div>
                         </div>
                       ))}
                     </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -580,3 +587,5 @@ export default function AutomatedTimingSystemDashboard() {
     </div>
   )
 }
+
+export default AutomatedTimingSystemDashboard
